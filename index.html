@@ -1,3 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crystal Structure WebXR Activity</title>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+    #ui-container { position: absolute; top: 10px; left: 10px; z-index: 10; color: white; }
+    button { margin: 2px; padding: 6px 12px; cursor: pointer; }
+  </style>
+  <!-- Three.js Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- OrbitControls -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+  <div id="ui-container">
+    <div id="lattice-info-tag">SC</div>
+    <button id="btn-lattice-sc">SC Simple</button>
+    <button id="btn-lattice-bcc">BCC Body-Center</button>
+    <button id="btn-lattice-fcc">FCC Face-Center</button>
+    <br>
+    <button id="btn-clear-draw">Clear Draw</button>
+    <button id="btn-evaluate-drawn-plane">Evaluate Plane</button>
+    <button id="btn-next-challenge">Next Challenge</button>
+    <br>
+    <button id="btn-tier-easy">Easy</button>
+    <button id="btn-tier-med">Medium</button>
+    <button id="btn-tier-hard">Hard</button>
+  </div>
+
+  <script>
+    // PASTE YOUR FULL JAVASCRIPT CODE HERE
 <!-- ... existing code ... -->
           <!-- Crystal Lattice Selector -->
           <div class="glass-panel p-3.5 rounded-2xl space-y-2.5">
