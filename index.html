@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Crystal Structure WebXR Activity</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/webxr/VRButton.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; background-color: #0f172a; font-family: ui-sans-serif, system-ui, sans-serif; }
+    .glass-panel { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); }
+  </style>
+</head>
+<body class="select-none text-white">
+
+  <div id="ui-container" class="absolute top-4 left-4 z-20 w-80 space-y-3 pointer-events-auto">
+    <div class="glass-panel p-4 rounded-2xl shadow-xl">
+      <h1 class="text-base font-bold text-cyan-400 flex items-center gap-2">
+        <i class="fa-solid fa-gem"></i> Crystal Structure XR
+      </h1>
+      <p class="text-xs text-slate-300 mt-1">Select lattice structure & draw planes across nodes.</p>
+    </div>
+
+    <div class="glass-panel p-3.5 rounded-2xl space-y-2.5 shadow-xl">
+      <div class="flex justify-between items-center text-xs font-bold text-cyan-300 uppercase tracking-wider">
+        <span><i class="fa-solid fa-cubes mr-1.5"></i> Structure</span>
+        <span id="lattice-info-tag" class="text-xs text-cyan-400 font-mono bg-cyan-950/60 px-2 py-0.5 rounded-md border border-cyan-800/50">SC</span>
+      </div>
+      <div class="grid grid-cols-3 gap-1.5">
+        <button id="btn-lattice-sc" class="bg-cyan-600 text-white p-2 rounded-xl text-xs font-bold flex flex-col items-center shadow-md transition-all">
+          <span>SC</span> <span class="text-[9px] font-normal opacity-80">Simple</span>
+        </button>
+        <button id="btn-lattice-bcc" class="bg-slate-800 hover:bg-slate-700 text-gray-300 p-2 rounded-xl text-xs font-bold flex flex-col items-center transition-all">
+          <span>BCC</span> <span class="text-[9px] font-normal opacity-80">Body-Center</span>
+        </button>
+        <button id="btn-lattice-fcc" class="bg-slate-800 hover:bg-slate-700 text-gray-300 p-2 rounded-xl text-xs font-bold flex flex-col items-center transition-all">
+          <span>FCC</span> <span class="text-[9px] font-normal opacity-80">Face-Center</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="glass-panel p-3.5 rounded-2xl space-y-2 shadow-xl">
+      <div class="text-xs font-bold text-cyan-300 uppercase tracking-wider mb-1">
+        <i class="fa-solid fa-draw-polygon mr-1.5"></i> Drawing Tools
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <button id="btn-clear-draw" class="bg-slate-800 hover:bg-slate-700 text-slate-200 py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all">
+          <i class="fa-solid fa-eraser"></i> Clear Draw
+        </button>
+        <button id="btn-evaluate-drawn-plane" class="bg-emerald-600 hover:bg-emerald-500 text-white py-2 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md transition-all">
+          <i class="fa-solid fa-check"></i> Evaluate Plane
+        </button>
+      </div>
+    </div>
+
+    <div class="glass-panel p-3.5 rounded-2xl space-y-2 shadow-xl">
+      <div class="flex justify-between items-center text-xs font-bold text-cyan-300 uppercase tracking-wider">
+        <span><i class="fa-solid fa-trophy mr-1.5"></i> Target Challenge</span>
+        <span id="target-plane-tag" class="font-mono text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-800/50">(1 1 0)</span>
+      </div>
+      <div class="grid grid-cols-3 gap-1.5">
+        <button id="btn-tier-easy" class="bg-emerald-600 text-white py-1.5 rounded-lg text-xs font-semibold">Easy</button>
+        <button id="btn-tier-med" class="bg-slate-800 text-slate-300 py-1.5 rounded-lg text-xs font-semibold">Medium</button>
+        <button id="btn-tier-hard" class="bg-slate-800 text-slate-300 py-1.5 rounded-lg text-xs font-semibold">Hard</button>
+      </div>
+      <button id="btn-next-challenge" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-xl text-xs font-bold transition-all mt-1">
+        Next Target
+      </button>
+      <div id="feedback-panel" class="hidden mt-2 p-2 rounded-xl text-xs text-center font-bold"></div>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      latticeType: 'SC',
+      latticeConstant: 2.0,
+      drawnPoints: [],
+      challengeDifficulty: 'easy',
+      targetPlane: { h: 1, k: 1, l: 0 }
+    };
+
+    let scene, camera, renderer, controls, raycaster, mouse;
+    let crystalGroup, ballStickGroup, drawingLinesGroup, userPlaneMesh;
+    let ballMaterial, bondMaterial, userPlaneMaterial;
+
+    function initScene() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0f172a);
+
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(4, 3, 5);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      const vrButton = VRButton.createButton(renderer);
+      document.body.appendChild(vrButton);
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0, 0);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      // Bright ambient & directional lights to ensure visibility
+      const ambientLight = new THREE.AmbientLight(0xffffff, 2.0);
+      scene.add(ambientLight);
+
+      const dirLight1 = new THREE.DirectionalLight(0xffffff, 2.0);
+      dirLight1.position.set(5, 10, 7);
+      scene.add(dirLight1);
+
+      const dirLight2 = new THREE.DirectionalLight(0x38bdf8, 1.5);
+      dirLight2.position.set(-5, -5, -5);
+      scene.add(dirLight2);
+
+      crystalGroup = new THREE.Group();
+      drawingLinesGroup = new THREE.Group();
+      scene.add(crystalGroup);
+      scene.add(drawingLinesGroup);
+
+      // Simple visual grid floor reference
+      const gridHelper = new THREE.GridHelper(10, 10, 0x334155, 0x1e293b);
+      gridHelper.position.y = -2;
+      scene.add(gridHelper);
+
+      raycaster = new THREE.Raycaster();
+      mouse = new THREE.Vector2();
+
+      setupMaterials();
+      buildLattice();
+      setupUIEventListeners();
+
+      window.addEventListener('resize', onWindowResize);
+      window.addEventListener('click', onCanvasClick);
+
+      // Three.js XR Render Loop
+      renderer.setAnimationLoop(animate);
+    }
+
+    function setupMaterials() {
+      ballMaterial = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.1, metalness: 0.2 });
+      bondMaterial = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.2, metalness: 0.5 });
+      userPlaneMaterial = new THREE.MeshStandardMaterial({
+        color: 0x10b981, transparent: true, opacity: 0.65, side: THREE.DoubleSide, roughness: 0.1
+      });
+    }
+
+    function buildLattice() {
+      if (ballStickGroup) crystalGroup.remove(ballStickGroup);
+      ballStickGroup = new THREE.Group();
+
+      const a = state.latticeConstant;
+      const halfA = a / 2;
+      let atomPositions = [];
+
+      // SC Corners
+      for (let x of [-halfA, halfA]) {
+        for (let y of [-halfA, halfA]) {
+          for (let z of [-halfA, halfA]) {
+            atomPositions.push(new THREE.Vector3(x, y, z));
+          }
+        }
+      }
+
+      // BCC Center
+      if (state.latticeType === 'BCC') {
+        atomPositions.push(new THREE.Vector3(0, 0, 0));
+      }
+
+      // FCC Face Centers
+      if (state.latticeType === 'FCC') {
+        atomPositions.push(
+          new THREE.Vector3(0, 0, halfA), new THREE.Vector3(0, 0, -halfA),
+          new THREE.Vector3(0, halfA, 0), new THREE.Vector3(0, -halfA, 0),
+          new THREE.Vector3(halfA, 0, 0), new THREE.Vector3(-halfA, 0, 0)
+        );
+      }
+
+      const ballRadius = 0.22;
+      const bondRadius = 0.05;
+
+      atomPositions.forEach(pos => {
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(ballRadius, 32, 32), ballMaterial);
+        ball.position.copy(pos);
+        ballStickGroup.add(ball);
+      });
+
+      const corners = [
+        new THREE.Vector3(-halfA, -halfA, -halfA), new THREE.Vector3(halfA, -halfA, -halfA),
+        new THREE.Vector3(-halfA, halfA, -halfA), new THREE.Vector3(halfA, halfA, -halfA),
+        new THREE.Vector3(-halfA, -halfA, halfA), new THREE.Vector3(halfA, -halfA, halfA),
+        new THREE.Vector3(-halfA, halfA, halfA), new THREE.Vector3(halfA, halfA, halfA)
+      ];
+
+      const edges = [
+        [0,1], [2,3], [4,5], [6,7],
+        [0,2], [1,3], [4,6], [5,7],
+        [0,4], [1,5], [2,6], [3,7]
+      ];
+
+      edges.forEach(([i, j]) => {
+        const p1 = corners[i];
+        const p2 = corners[j];
+        const cyl = new THREE.Mesh(new THREE.CylinderGeometry(bondRadius, bondRadius, p1.distanceTo(p2), 16), bondMaterial);
+        cyl.position.copy(p1).add(p2).multiplyScalar(0.5);
+        cyl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), p2.clone().sub(p1).normalize());
+        ballStickGroup.add(cyl);
+      });
+
+      crystalGroup.add(ballStickGroup);
+    }
+
+    function onCanvasClick(e) {
+      if (e.target.tagName === 'BUTTON' || e.target.closest('#ui-container')) return;
+
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(ballStickGroup.children);
+
+      if (intersects.length > 0) {
+        const clickedPos = intersects[0].object.position.clone();
+        if (!state.drawnPoints.some(p => p.distanceTo(clickedPos) < 0.1)) {
+          state.drawnPoints.push(clickedPos);
+          renderDrawingLines();
+        }
+      }
+    }
+
+    function renderDrawingLines() {
+      while (drawingLinesGroup.children.length > 0) {
+        drawingLinesGroup.remove(drawingLinesGroup.children[0]);
+      }
+
+      if (state.drawnPoints.length < 1) return;
+
+      state.drawnPoints.forEach(pt => {
+        const marker = new THREE.Mesh(
+          new THREE.SphereGeometry(0.1, 16, 16),
+          new THREE.MeshBasicMaterial({ color: 0x10b981 })
+        );
+        marker.position.copy(pt);
+        drawingLinesGroup.add(marker);
+      });
+
+      if (state.drawnPoints.length > 1) {
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([
+          ...state.drawnPoints,
+          ...(state.drawnPoints.length >= 3 ? [state.drawnPoints[0]] : [])
+        ]);
+        const lineMat = new THREE.LineBasicMaterial({ color: 0x10b981, linewidth: 3 });
+        const line = new THREE.Line(lineGeo, lineMat);
+        drawingLinesGroup.add(line);
+      }
+
+      if (state.drawnPoints.length >= 3) {
+        const geom = new THREE.BufferGeometry();
+        const vertices = [];
+        
+        for (let i = 1; i < state.drawnPoints.length - 1; i++) {
+          vertices.push(
+            state.drawnPoints[0].x, state.drawnPoints[0].y, state.drawnPoints[0].z,
+            state.drawnPoints[i].x, state.drawnPoints[i].y, state.drawnPoints[i].z,
+            state.drawnPoints[i+1].x, state.drawnPoints[i+1].y, state.drawnPoints[i+1].z
+          );
+        }
+
+        geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        geom.computeVertexNormals();
+        userPlaneMesh = new THREE.Mesh(geom, userPlaneMaterial);
+        drawingLinesGroup.add(userPlaneMesh);
+      }
+    }
+
+    function clearDrawnPoints() {
+      state.drawnPoints = [];
+      renderDrawingLines();
+      const feedback = document.getElementById('feedback-panel');
+      feedback.className = 'hidden';
+    }
+
+    function evaluateDrawnPlane() {
+      const feedback = document.getElementById('feedback-panel');
+      if (state.drawnPoints.length < 3) {
+        feedback.textContent = 'Select at least 3 points to form a plane!';
+        feedback.className = 'mt-2 p-2 rounded-xl text-xs text-center font-bold bg-amber-950/80 text-amber-300 border border-amber-800';
+        return;
+      }
+
+      const v0 = new THREE.Vector3().subVectors(state.drawnPoints[1], state.drawnPoints[0]);
+      const v1 = new THREE.Vector3().subVectors(state.drawnPoints[2], state.drawnPoints[0]);
+      const normal = new THREE.Vector3().crossVectors(v0, v1).normalize();
+
+      const targetVec = new THREE.Vector3(state.targetPlane.h, state.targetPlane.k, state.targetPlane.l).normalize();
+      const dot = Math.abs(normal.dot(targetVec));
+
+      if (dot > 0.95) {
+        feedback.textContent = `Correct! Matched Miller Index (${state.targetPlane.h} ${state.targetPlane.k} ${state.targetPlane.l})`;
+        feedback.className = 'mt-2 p-2 rounded-xl text-xs text-center font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800';
+      } else {
+        feedback.textContent = 'Incorrect plane orientation. Try again!';
+        feedback.className = 'mt-2 p-2 rounded-xl text-xs text-center font-bold bg-rose-950/80 text-rose-300 border border-rose-800';
+      }
+    }
+
+    function generateNextChallenge() {
+      const easyTiers = [{h:1, k:0, l:0}, {h:0, k:1, l:0}, {h:1, k:1, l:0}];
+      const medTiers = [{h:1, k:1, l:1}, {h:0, k:2, l:0}];
+      const hardTiers = [{h:1, k:2, l:0}, {h:2, k:1, l:1}];
+
+      let options = easyTiers;
+      if (state.challengeDifficulty === 'med') options = medTiers;
+      if (state.challengeDifficulty === 'hard') options = hardTiers;
+
+      state.targetPlane = options[Math.floor(Math.random() * options.length)];
+      document.getElementById('target-plane-tag').textContent = `(${state.targetPlane.h} ${state.targetPlane.k} ${state.targetPlane.l})`;
+      clearDrawnPoints();
+    }
+
+    function updateLatticeButtons(activeId) {
+      ['sc', 'bcc', 'fcc'].forEach(t => {
+        const btn = document.getElementById(`btn-lattice-${t}`);
+        if (`btn-lattice-${t}` === activeId) {
+          btn.className = "bg-cyan-600 text-white p-2 rounded-xl text-xs font-bold flex flex-col items-center shadow-md";
+        } else {
+          btn.className = "bg-slate-800 hover:bg-slate-700 text-gray-300 p-2 rounded-xl text-xs font-bold flex flex-col items-center";
+        }
+      });
+    }
+
+    function setupUIEventListeners() {
+      ['sc', 'bcc', 'fcc'].forEach(type => {
+        document.getElementById(`btn-lattice-${type}`).onclick = () => {
+          state.latticeType = type.toUpperCase();
+          document.getElementById('lattice-info-tag').textContent = state.latticeType;
+          updateLatticeButtons(`btn-lattice-${type}`);
+          buildLattice();
+          clearDrawnPoints();
+        };
+      });
+
+      document.getElementById('btn-clear-draw').onclick = clearDrawnPoints;
+      document.getElementById('btn-evaluate-drawn-plane').onclick = evaluateDrawnPlane;
+      document.getElementById('btn-next-challenge').onclick = generateNextChallenge;
+
+      document.getElementById('btn-tier-easy').onclick = () => { state.challengeDifficulty = 'easy'; generateNextChallenge(); };
+      document.getElementById('btn-tier-med').onclick = () => { state.challengeDifficulty = 'med'; generateNextChallenge(); };
+      document.getElementById('btn-tier-hard').onclick = () => { state.challengeDifficulty = 'hard'; generateNextChallenge(); };
+    }
+
+    function animate() {
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    window.onload = initScene;
+  </script>
+</body>
+</html>
