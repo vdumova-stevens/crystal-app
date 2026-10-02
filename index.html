@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VR Sphere Demonstration</title>
+    
+    <!-- External Scripts for Three.js & Controls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #0f172a;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #f8fafc;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* 2D Overlay UI */
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 10;
+            pointer-events: none;
+            max-width: 380px;
+            width: calc(100% - 40px);
+        }
+
+        .card {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 18px;
+            padding: 22px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            pointer-events: auto;
+        }
+
+        h1 {
+            font-size: 1.35rem;
+            margin-bottom: 8px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #a5b4fc, #38bdf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            line-height: 1.45;
+            margin-bottom: 16px;
+        }
+
+        .controls-hint {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            font-size: 0.8rem;
+            background: rgba(255, 255, 255, 0.04);
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            margin-bottom: 16px;
+        }
+
+        .hint-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #cbd5e1;
+        }
+
+        .badge {
+            background: #3b82f6;
+            color: white;
+            padding: 3px 7px;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 0.82rem;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-xr {
+            background: linear-gradient(135deg, #059669, #10b981);
+            width: 100%;
+            padding: 12px;
+            font-size: 0.95rem;
+            box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35);
+        }
+
+        .btn-xr:hover {
+            background: linear-gradient(135deg, #047857, #059669);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: #e2e8f0;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.16);
+        }
+
+        .btn-secondary.active {
+            background: #3b82f6;
+            border-color: #60a5fa;
+            color: white;
+        }
+
+        #xr-status {
+            font-size: 0.75rem;
+            color: #f59e0b;
+            margin-top: 10px;
+            text-align: center;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-overlay">
+        <div class="card">
+            <h1>Spherical Geometry VR/MR</h1>
+            <p>Explore continuous 3D curvature, surface normals, cutaway slices, and coordinate grid lines.</p>
+            
+            <div class="controls-hint">
+                <div class="hint-item">
+                    <span class="badge">Quest</span> Grab trigger / Squeeze to hold & spin sphere.
+                </div>
+                <div class="hint-item">
+                    <span class="badge">Desktop</span> Click and drag mouse to orbit around scene.
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button id="btn-grid" class="btn btn-secondary active">Grid Lines</button>
+                <button id="btn-normals" class="btn btn-secondary">Normals</button>
+                <button id="btn-cutaway" class="btn btn-secondary">Cross Section</button>
+                <button id="btn-rotate" class="btn btn-secondary active">Auto Spin</button>
+            </div>
+
+            <button id="btn-enter-ar" class="btn btn-xr">Enter MR Passthrough</button>
+            <div id="xr-status">Checking WebXR support...</div>
+        </div>
+    </div>
+
+    <script>
+        const state = {
+            gridVisible: true,
+            normalsVisible: false,
+            cutawayVisible: false,
+            autoRotate: true,
+            isGrabbing: false,
+            sphereRadius: 0.35 // 35cm radius in 3D world space
+        };
+
+        // --- Three.js Scene Variables ---
+        let scene, camera, renderer, orbitControls;
+        let sphereGroup, mainSphere, gridSphere, normalsGroup, crossSectionMesh, corePoint, radiusLine;
+        let infoPanelGroup;
+        let controllers = [];
+        let raycaster, tempMatrix;
+
+        // Controller tracking state
+        const controllerData = new Map();
+
+        // Initialize application on load
+        window.addEventListener('load', init);
+
+        function init() {
+            const container = document.getElementById('canvas-container');
+
+            // 1. Scene Setup
+            scene = new THREE.Scene();
+
+            // 2. Camera Setup
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 20);
+            camera.position.set(0, 1.3, 0.8);
+
+            // 3. WebGL Renderer Setup
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true;
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+            container.appendChild(renderer.domElement);
+
+            // 4. Desktop Orbit Controls
+            orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+            orbitControls.target.set(0, 1.2, -0.6);
+            orbitControls.enableDamping = true;
+            orbitControls.dampingFactor = 0.05;
+            orbitControls.update();
+
+            setupLighting();
+
+            buildSphereRig();
+
+            buildVRInfoPanel();
+
+            setupXR();
+
+            setupUIHandlers();
+
+            window.addEventListener('resize', onWindowResize);
+
+            renderer.setAnimationLoop(render);
+        }
+
+        function setupLighting() {
+            const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambient);
+
+            const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            keyLight.position.set(1.5, 3, 1);
+            keyLight.castShadow = true;
+            keyLight.shadow.mapSize.width = 1024;
+            keyLight.shadow.mapSize.height = 1024;
+            scene.add(keyLight);
+
+            const fillLight = new THREE.PointLight(0x38bdf8, 1.5, 5);
+            fillLight.position.set(-1.5, 0.8, -0.5);
+            scene.add(fillLight);
+
+            const accentLight = new THREE.PointLight(0xec4899, 1.2, 5);
+            accentLight.position.set(1, 0.5, -1);
+            scene.add(accentLight);
+        }
+
+        function buildSphereRig() {
+            // Main anchor group at eye level
+            sphereGroup = new THREE.Group();
+            sphereGroup.position.set(0, 1.2, -0.6);
+            scene.add(sphereGroup);
+
+            // Metallic Sphere Mesh
+            const sphereGeo = new THREE.SphereGeometry(state.sphereRadius, 64, 64);
+            const mainMaterial = new THREE.MeshPhysicalMaterial({
+                color: 0x1e293b,
+                metalness: 0.35,
+                roughness: 0.15,
+                clearcoat: 0.8,
+                clearcoatRoughness: 0.1,
+                transmission: 0.2,
+                opacity: 0.95,
+                transparent: true
+            });
+            mainSphere = new THREE.Mesh(sphereGeo, mainMaterial);
+            mainSphere.castShadow = true;
+            mainSphere.receiveShadow = true;
+            sphereGroup.add(mainSphere);
+
+            // Latitude / Longitude Wireframe Grid Layer
+            const gridGeo = new THREE.SphereGeometry(state.sphereRadius * 1.002, 24, 16);
+            const gridMat = new THREE.MeshBasicMaterial({
+                color: 0x38bdf8,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.4
+            });
+            gridSphere = new THREE.Mesh(gridGeo, gridMat);
+            sphereGroup.add(gridSphere);
+
+            // Surface Normals Visualizer
+            normalsGroup = new THREE.Group();
+            const sampleGeo = new THREE.SphereGeometry(state.sphereRadius, 12, 10);
+            const posAttr = sampleGeo.attributes.position;
+            const normalAttr = sampleGeo.attributes.normal;
+
+            for (let i = 0; i < posAttr.count; i++) {
+                const pos = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+                const norm = new THREE.Vector3(normalAttr.getX(i), normalAttr.getY(i), normalAttr.getZ(i));
+
+                const arrow = new THREE.ArrowHelper(
+                    norm,
+                    pos,
+                    0.08,
+                    0xf43f5e,
+                    0.02,
+                    0.015
+                );
+                normalsGroup.add(arrow);
+            }
+            normalsGroup.visible = false;
+            sphereGroup.add(normalsGroup);
+
+            // Cross-Section Slice Plane
+            const sliceGeo = new THREE.CircleGeometry(state.sphereRadius, 64);
+            const sliceMat = new THREE.MeshBasicMaterial({
+                color: 0x10b981,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.6
+            });
+            crossSectionMesh = new THREE.Mesh(sliceGeo, sliceMat);
+            crossSectionMesh.rotation.x = Math.PI / 2;
+            crossSectionMesh.visible = false;
+            sphereGroup.add(crossSectionMesh);
+
+            const ringGeo = new THREE.RingGeometry(state.sphereRadius - 0.005, state.sphereRadius + 0.003, 64);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0x34d399, side: THREE.DoubleSide });
+            const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+            crossSectionMesh.add(ringMesh);
+
+            // Center Point and Radius Vector Line
+            const centerGeo = new THREE.SphereGeometry(0.015, 16, 16);
+            const centerMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
+            corePoint = new THREE.Mesh(centerGeo, centerMat);
+            sphereGroup.add(corePoint);
+
+            const linePoints = [
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(state.sphereRadius, 0, 0)
+            ];
+            const lineGeo = new THREE.BufferGeometry().setFromPoints(linePoints);
+            const lineMat = new THREE.LineBasicMaterial({ color: 0xf59e0b, linewidth: 3 });
+            radiusLine = new THREE.Line(lineGeo, lineMat);
+            sphereGroup.add(radiusLine);
+        }
+
+        function buildVRInfoPanel() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+            ctx.roundRect(0, 0, 512, 256, 24);
+            ctx.fill();
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = '#38bdf8';
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'Bold 32px sans-serif';
+            ctx.fillText('SPHERE PROPERTIES', 30, 50);
+
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '22px sans-serif';
+            ctx.fillText('• Definition: Points equidistant from center', 30, 95);
+            ctx.fillText('• Radius (r): 0.35 m', 30, 130);
+            ctx.fillText('• Surface Area (4πr²): ≈ 1.54 m²', 30, 165);
+            ctx.fillText('• Volume (4/3πr³): ≈ 0.18 m³', 30, 200);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const planeGeo = new THREE.PlaneGeometry(0.5, 0.25);
+            const planeMat = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+
+            infoPanelGroup = new THREE.Mesh(planeGeo, planeMat);
+            infoPanelGroup.position.set(0, -0.45, 0);
+            infoPanelGroup.rotation.x = -Math.PI / 12;
+            sphereGroup.add(infoPanelGroup);
+        }
+
+        function setupXR() {
+            tempMatrix = new THREE.Matrix4();
+            raycaster = new THREE.Raycaster();
+
+            const xrStatus = document.getElementById('xr-status');
+            const arBtn = document.getElementById('btn-enter-ar');
+
+            if ('xr' in navigator) {
+                navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+                    if (supported) {
+                        xrStatus.innerText = 'Meta Quest MR Passthrough Supported!';
+                        xrStatus.style.color = '#10b981';
+                        arBtn.addEventListener('click', startXRSession);
+                    } else {
+                        xrStatus.innerText = 'MR Passthrough not detected. Checking VR...';
+                        checkVRSupport();
+                    }
+                }).catch(() => checkVRSupport());
+            } else {
+                xrStatus.innerText = 'WebXR preview mode active (use desktop orbit)';
+            }
+
+            for (let i = 0; i < 2; i++) {
+                const controller = renderer.xr.getController(i);
+
+                // Pointer Ray line
+                const rayGeo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0, 0, 0),
+                    new THREE.Vector3(0, 0, -3)
+                ]);
+                const rayMat = new THREE.LineBasicMaterial({
+                    color: 0x38bdf8,
+                    transparent: true,
+                    opacity: 0.5
+                });
+                const ray = new THREE.Line(rayGeo, rayMat);
+                controller.add(ray);
+
+                // Controller Grip Marker
+                const gripGeo = new THREE.SphereGeometry(0.02, 16, 16);
+                const gripMat = new THREE.MeshBasicMaterial({ color: 0x6366f1, wireframe: true });
+                const grip = new THREE.Mesh(gripGeo, gripMat);
+                controller.add(grip);
+
+                scene.add(controller);
+                controllers.push(controller);
+
+                controller.addEventListener('selectstart', onGrabStart);
+                controller.addEventListener('selectend', onGrabEnd);
+                controller.addEventListener('squeezestart', onGrabStart);
+                controller.addEventListener('squeezeend', onGrabEnd);
+
+                controllerData.set(controller, {
+                    isGrabbing: false,
+                    prevMatrix: new THREE.Matrix4()
+                });
+            }
+        }
+
+        function checkVRSupport() {
+            const xrStatus = document.getElementById('xr-status');
+            const arBtn = document.getElementById('btn-enter-ar');
+            navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+                if (supported) {
+                    xrStatus.innerText = 'WebXR VR Mode Supported!';
+                    arBtn.innerText = 'Enter VR Session';
+                    arBtn.addEventListener('click', startXRSession);
+                } else {
+                    xrStatus.innerText = 'Preview Mode active (Desktop Orbit Controls)';
+                }
+            });
+        }
+
+        async function startXRSession() {
+            const isAR = await navigator.xr.isSessionSupported('immersive-ar');
+            const mode = isAR ? 'immersive-ar' : 'immersive-vr';
+
+            const sessionInit = {
+                optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']
+            };
+
+            const session = await navigator.xr.requestSession(mode, sessionInit);
+            renderer.xr.setReferenceSpaceType('local-floor');
+            await renderer.xr.setSession(session);
+
+            if (isAR) {
+                renderer.setClearColor(0x000000, 0);
+            }
+
+            document.getElementById('ui-overlay').style.display = 'none';
+
+            session.addEventListener('end', () => {
+                document.getElementById('ui-overlay').style.display = 'block';
+                renderer.setClearColor(0x0f172a, 1);
+            });
+        }
+
+        function onGrabStart(event) {
+            const controller = event.target;
+            const data = controllerData.get(controller);
+
+            tempMatrix.identity().extractRotation(controller.matrixWorld);
+            raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+            raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+            const intersects = raycaster.intersectObject(mainSphere);
+            const distToCenter = controller.position.distanceTo(sphereGroup.position);
+
+            if (intersects.length > 0 || distToCenter < 0.6) {
+                data.isGrabbing = true;
+                data.prevMatrix.copy(controller.matrixWorld);
+                state.isGrabbing = true;
+
+                if (controller.gamepad && controller.gamepad.hapticActuators && controller.gamepad.hapticActuators.length > 0) {
+                    controller.gamepad.hapticActuators[0].pulse(0.8, 80);
+                }
+            }
+        }
+
+        function onGrabEnd(event) {
+            const controller = event.target;
+            const data = controllerData.get(controller);
+            data.isGrabbing = false;
+
+            state.isGrabbing = Array.from(controllerData.values()).some(d => d.isGrabbing);
+        }
+
+        function updateGrabs() {
+            controllers.forEach((controller) => {
+                const data = controllerData.get(controller);
+                if (data && data.isGrabbing) {
+                    const currentMatrix = controller.matrixWorld;
+                    const deltaMatrix = new THREE.Matrix4();
+                    
+                    deltaMatrix.copy(data.prevMatrix).invert();
+                    deltaMatrix.premultiply(currentMatrix);
+
+                    const deltaRotation = new THREE.Quaternion();
+                    const deltaPosition = new THREE.Vector3();
+                    const scale = new THREE.Vector3();
+                    deltaMatrix.decompose(deltaPosition, deltaRotation, scale);
+
+                    sphereGroup.quaternion.premultiply(deltaRotation);
+                    sphereGroup.position.add(deltaPosition);
+
+                    data.prevMatrix.copy(currentMatrix);
+
+                    if (controller.gamepad && controller.gamepad.hapticActuators && controller.gamepad.hapticActuators.length > 0) {
+                        controller.gamepad.hapticActuators[0].pulse(0.1, 16);
+                    }
+                }
+            });
+        }
+
+        function setupUIHandlers() {
+            const btnGrid = document.getElementById('btn-grid');
+            const btnNormals = document.getElementById('btn-normals');
+            const btnCutaway = document.getElementById('btn-cutaway');
+            const btnRotate = document.getElementById('btn-rotate');
+
+            btnGrid.addEventListener('click', () => {
+                state.gridVisible = !state.gridVisible;
+                gridSphere.visible = state.gridVisible;
+                btnGrid.classList.toggle('active', state.gridVisible);
+            });
+
+            btnNormals.addEventListener('click', () => {
+                state.normalsVisible = !state.normalsVisible;
+                normalsGroup.visible = state.normalsVisible;
+                btnNormals.classList.toggle('active', state.normalsVisible);
+            });
+
+            btnCutaway.addEventListener('click', () => {
+                state.cutawayVisible = !state.cutawayVisible;
+                crossSectionMesh.visible = state.cutawayVisible;
+                mainSphere.material.opacity = state.cutawayVisible ? 0.45 : 0.95;
+                btnCutaway.classList.toggle('active', state.cutawayVisible);
+            });
+
+            btnRotate.addEventListener('click', () => {
+                state.autoRotate = !state.autoRotate;
+                btnRotate.classList.toggle('active', state.autoRotate);
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function render() {
+            updateGrabs();
+
+            if (state.autoRotate && !state.isGrabbing) {
+                sphereGroup.rotation.y += 0.005;
+                sphereGroup.rotation.x += 0.002;
+            }
+
+            if (!renderer.xr.isPresenting) {
+                orbitControls.update();
+            }
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
